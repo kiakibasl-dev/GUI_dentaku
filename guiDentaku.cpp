@@ -2,6 +2,27 @@
 #include <stdio.h>
 #include <cwctype>  // iswdigit 用
 
+//四則演算を行うクラス
+class Calculator{
+    public : 
+        int keisan(int x, char op, int y);
+};
+//四則演算を行うクラスのメンバ関数
+int Calculator::keisan(int x, char op, int y){
+    switch(op){
+        case '+': return x + y;
+        case '-': return x - y;
+        case '*': return x * y;
+        case '/': 
+            if (y == 0){
+                return x;
+            }
+            else return x / y;
+        default: 
+            return x;
+    }
+}
+
 // 2. メッセージを処理する関数（窓口）
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     //電卓の現在の値を保持
@@ -48,8 +69,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             }
         }break;
 
-        case WM_COMMAND:{
-            int wmId = LOWORD(wParam);          // 押されたボタンのID
+        case WM_COMMAND: {
+            static int storedNum = 0;      // 1つ目の数字を保存
+            static wchar_t currentOp = L'\0'; // 押された演算子 (+, -, *, /) を保存
+            static bool isNewInput = true;    // 次に入力する数字が「書き始め」かどうか
+            static Calculator calc;           // あなたが作ったCLIの計算クラス
+
+            int wmId = LOWORD(wParam);
+    
             if (wmId >= 101 && wmId <= 116) {   // ボタン（101～116）が押された場合
                 const wchar_t* labels[] = {     // 表示用のラベル配列（WM_CREATEのものと同じ）
                     L"7", L"8", L"9", L"/",
@@ -59,21 +86,40 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 };
                 const wchar_t* selectedLabel = labels[wmId - 101];  // 1. どのボタンの文字を取得するか計算
                 HWND hEdit = GetDlgItem(hwnd, 200);                 // 2. ディスプレイ（ID: 200）の「ハンドル」を取得
-                if (wcscmp(selectedLabel, L"C") == 0) { // 【Cボタン】 画面を "0" に戻す
+
+                if (wcscmp(selectedLabel, L"C") == 0) {         // 【Cボタン】 画面を "0" に戻す
                     SetWindowTextW(hEdit, L"0");
                 } 
-                else if (wcscmp(selectedLabel, L"=") == 0) {     // 【＝ボタン】 まだ何もしない（次のステップ）
-           
-                }
-                else if (iswdigit(selectedLabel[0])) {  // 【数字ボタン】 今の文字に付け足す
+                else if (wcscmp(selectedLabel, L"=") == 0) {    // 【＝ボタン】 まだ何もしない（次のステップ）
                     wchar_t currentText[64];
                     GetWindowTextW(hEdit, currentText, 64);
+                    int displayNum = _wtoi(currentText);
+                    int result = calc.keisan(storedNum, (char)currentOp, displayNum);
+                    swprintf(currentText, 64, L"%d", result);
+                    SetWindowTextW(hEdit, currentText);
+                    isNewInput = true;
+                }
+                else if (wcschr(L"+-*/", selectedLabel[0])) {   //　【演算子ボタン】
+                    wchar_t currentText[64];
+                    GetWindowTextW(hEdit, currentText, 64);     //　液晶の数字を取り出す
+                    storedNum = _wtoi(currentText);             // 1. 液晶の数値を「最初の数」として記憶
+                    currentOp = selectedLabel[0];               // 2. どの演算子か記憶
+                    isNewInput = true;                          // 3. 次の数字は新しく書き始めてほしいので、フラグを立てる
+                }
+                else if (iswdigit(selectedLabel[0])) {          // 【数字ボタン】 今の文字に付け足す
+                    wchar_t currentText[64];
 
-                    if (wcscmp(currentText, L"0") == 0) {       // 今が "0" なら、上書きする
+                    if(isNewInput){                             //画面をクリアして新しい数字を書く
                         SetWindowTextW(hEdit, selectedLabel);
-                    } else {                                    // 今が "0" 以外なら、後ろにくっつける        
-                        wcscat(currentText, selectedLabel);
-                        SetWindowTextW(hEdit, currentText);
+                        isNewInput = false;
+                    }else{
+                        GetWindowTextW(hEdit, currentText, 64);
+                        if (wcscmp(currentText, L"0") == 0) {       // 先頭が "0" なら、上書きする
+                            SetWindowTextW(hEdit, selectedLabel);
+                        } else {                                    // 先頭が "0" 以外なら、後ろにくっつける        
+                            wcscat(currentText, selectedLabel);
+                            SetWindowTextW(hEdit, currentText);
+                        }
                     }
                 }
             }
