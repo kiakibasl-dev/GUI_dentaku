@@ -40,34 +40,52 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             };
             //証明情報を宣言
             HINSTANCE hInst = ((LPCREATESTRUCT)lParam)->hInstance;
-
-            //ディスプレイの作成
-            CreateWindowW(
-                L"EDIT",   //クラス名らしい、既に用意されている箱
-                L"0",       //表示される文字
-                WS_VISIBLE | WS_CHILD | WS_BORDER | ES_RIGHT | ES_READONLY,  //スタイル
-                10, 10, 230, 30, // 位置(x,y)とサイズ(幅,高さ)
-                hwnd,
-                (HMENU)200,
-                hInst,
-                NULL
+            HFONT hFont = CreateFontW(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,    // 1. フォントを作成（大きさ 28、太字、MS ゴシックなど） 
+                                      DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, 
+                                      DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI  ");
+            HWND hEdit = CreateWindowW(                             // --- 【2. ディスプレイの作成とフォント適用】 ---
+                L"EDIT", L"0", 
+                WS_VISIBLE | WS_CHILD | WS_BORDER | ES_RIGHT | ES_READONLY,
+                10, 10, 230, 40,
+                hwnd, (HMENU)200, hInst, NULL
             );
-            // 3. ボタンを 4x4 でループ作成
+            SendMessage(hEdit, WM_SETFONT, (WPARAM)hFont, TRUE);    // ディスプレイにフォントをセット
+            // WM_CREATE の中
             for (int i = 0; i < 16; i++) {
                 int x = (i % 4) * 60 + 10;
-                int y = (i / 4) * 60 + 50; // ディスプレイの下から配置するため +50
+                int y = (i / 4) * 60 + 60;
 
-                CreateWindowW(
-                    L"BUTTON", labels[i],
-                    WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-                    x, y, 50, 50,
-                    hwnd,
-                    (HMENU)(UINT_PTR)(101 + i),
-                    hInst,
-                    NULL
-                );
+                DWORD style = WS_VISIBLE | WS_CHILD;
+                if (wcschr(L"+-*/=", labels[i][0])) {               // 演算子（+, -, *, /, =）なら「自分で描く(OWNERDRAW)」スタイルにする
+                    style |= BS_OWNERDRAW;
+                } else {
+                    style |= BS_PUSHBUTTON;
+                }
+
+                CreateWindowW(L"BUTTON", labels[i], style, x, y, 50, 50, hwnd, (HMENU)(UINT_PTR)(101 + i), hInst, NULL);
             }
         }break;
+
+        case WM_DRAWITEM: {
+            // lParam の中には「描き方の説明図(DRAWITEMSTRUCT)」へのポインタが入っている
+            LPDRAWITEMSTRUCT pDIS = (LPDRAWITEMSTRUCT)lParam;
+
+            // 1. ボタンの背景を塗る（演算子ならオレンジ、それ以外はグレーなど）
+            HBRUSH hBrush = CreateSolidBrush(RGB(255, 165, 0)); // オレンジ色
+            FillRect(pDIS->hDC, &pDIS->rcItem, hBrush);
+            DeleteObject(hBrush);
+
+            // 2. ボタンの枠線を描く
+            FrameRect(pDIS->hDC, &pDIS->rcItem, (HBRUSH)GetStockObject(BLACK_BRUSH));
+
+            // 3. 文字を書く（ボタンに設定されているテキストを取得して描画）
+            wchar_t buf[16];
+            GetWindowTextW(pDIS->hwndItem, buf, 16);
+            SetBkMode(pDIS->hDC, TRANSPARENT); // 文字の背景を透明に
+            DrawTextW(pDIS->hDC, buf, -1, &pDIS->rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+
+            return TRUE;
+        }
 
         case WM_COMMAND: {
             static int storedNum = 0;      // 1つ目の数字を保存
