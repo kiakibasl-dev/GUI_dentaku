@@ -5,21 +5,31 @@
 //四則演算を行うクラス
 class Calculator{
     public : 
-        int keisan(int x, char op, int y);
+        bool keisan(int x, char op, int y, int& result);
 };
 //四則演算を行うクラスのメンバ関数
-int Calculator::keisan(int x, char op, int y){
+bool Calculator::keisan(int x, char op, int y, int& result){
     switch(op){
-        case '+': return x + y;
-        case '-': return x - y;
-        case '*': return x * y;
+        case '+': 
+            result = x + y;
+            return true;
+        case '-': 
+            result = x - y;
+            return true;
+        case '*':
+            result = x * y;
+            return true;
         case '/': 
             if (y == 0){
-                return x;
+                result = x;
+                return false;
             }
-            else return x / y;
+            else{
+                result = x / y;
+                return true;
+            }
         default: 
-            return x;
+            return false;
     }
 }
 
@@ -31,6 +41,23 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     switch (uMsg) {
         case WM_CREATE:{ // ウィンドウが作られた瞬間
             // ボタンを作成
+
+            // --- メニューバーの作成 ---
+            HMENU hMenu = CreateMenu();      // メニューバー本体
+            HMENU hSubMenu = CreatePopupMenu(); // 「Mode」の中身
+
+            // メニュー項目を追加 (ID: 301, 302, 303)
+            AppendMenuW(hSubMenu, MF_STRING, 301, L"Calculator");
+            AppendMenuW(hSubMenu, MF_STRING, 302, L"Base Converter");
+            AppendMenuW(hSubMenu, MF_STRING, 303, L"Currency");
+
+            // メニューバーに「Mode」という名前でサブメニューを登録
+            AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hSubMenu, L"Mode");
+
+            // ウィンドウにメニューバーをセット
+            SetMenu(hwnd, hMenu);
+            // --- メニューバーの作成 ---
+
             // 1. ボタンのラベル定義
             const wchar_t* labels[] = {
                 L"7", L"8", L"9", L"/",
@@ -56,7 +83,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 int y = (i / 4) * 60 + 60;
 
                 DWORD style = WS_VISIBLE | WS_CHILD;
-                if (wcschr(L"+-*/=", labels[i][0])) {               // 演算子（+, -, *, /, =）なら「自分で描く(OWNERDRAW)」スタイルにする
+                if (wcschr(L"+-*/=C", labels[i][0])) {               // 演算子（+, -, *, /, =, C）なら「自分で描く(OWNERDRAW)」スタイルにする
                     style |= BS_OWNERDRAW;
                 } else {
                     style |= BS_PUSHBUTTON;
@@ -69,22 +96,39 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         case WM_DRAWITEM: {
             // lParam の中には「描き方の説明図(DRAWITEMSTRUCT)」へのポインタが入っている
             LPDRAWITEMSTRUCT pDIS = (LPDRAWITEMSTRUCT)lParam;
+            bool isPressed = (pDIS->itemState & ODS_SELECTED);// pDIS->itemState という変数の中に、現在の状態（選択中、押下中など）がビットで入っています。
+            
+            wchar_t buf[16];
+            GetWindowTextW(pDIS->hwndItem, buf, 16);
 
-            // 1. ボタンの背景を塗る（演算子ならオレンジ、それ以外はグレーなど）
-            HBRUSH hBrush = CreateSolidBrush(RGB(255, 165, 0)); // オレンジ色
+            HBRUSH hBrush;
+            if (wcscmp(buf, L"C") == 0) {
+                // --- Cボタン（クリア）の場合：赤系 ---
+                if (isPressed) {
+                    hBrush = CreateSolidBrush(RGB(150, 0, 0)); // 濃い赤
+                } else {
+                    hBrush = CreateSolidBrush(RGB(255, 69, 0)); // 鮮やかな赤（オレンジレッド）
+                }
+            } else {
+                // --- それ以外のボタン（演算子）：オレンジ系 ---
+                if (isPressed) {
+                    hBrush = CreateSolidBrush(RGB(200, 100, 0)); // 濃いオレンジ
+                } else {
+                    hBrush = CreateSolidBrush(RGB(255, 165, 0)); // 普通のオレンジ
+                }
+            }
+            
+            //塗る pDIS->hDC: 描画対象（キャンバス）&pDIS->rcItem: ボタンの大きさ（四角形）
             FillRect(pDIS->hDC, &pDIS->rcItem, hBrush);
             DeleteObject(hBrush);
 
-            // 2. ボタンの枠線を描く
+            //枠線と文字を描く
             FrameRect(pDIS->hDC, &pDIS->rcItem, (HBRUSH)GetStockObject(BLACK_BRUSH));
-
-            // 3. 文字を書く（ボタンに設定されているテキストを取得して描画）
-            wchar_t buf[16];
-            GetWindowTextW(pDIS->hwndItem, buf, 16);
             SetBkMode(pDIS->hDC, TRANSPARENT); // 文字の背景を透明に
+            SetTextColor(pDIS->hDC, RGB(255, 255, 255)); // 文字を白に！
             DrawTextW(pDIS->hDC, buf, -1, &pDIS->rcItem, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
-            return TRUE;
+            break;
         }
 
         case WM_COMMAND: {
@@ -94,6 +138,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             static Calculator calc;           // あなたが作ったCLIの計算クラス
 
             int wmId = LOWORD(wParam);
+
+            // --- メニューの処理 ---
+            if (wmId == 301) {
+                MessageBoxW(hwnd, L"Calculator Mode", L"Info", MB_OK);
+                // ここに電卓UIを表示し、他を隠す処理を書く予定
+            }
+            else if (wmId == 302) {
+                MessageBoxW(hwnd, L"Base Converter Mode", L"Info", MB_OK);
+                // ここに進数変換UIを表示し、電卓を隠す処理を書く予定
+            }
+            else if (wmId == 303) {
+                MessageBoxW(hwnd, L"Currency Mode", L"Info", MB_OK);
+                // ここに為替UIを表示し、他を隠す処理を書く予定
+            }
     
             if (wmId >= 101 && wmId <= 116) {   // ボタン（101～116）が押された場合
                 const wchar_t* labels[] = {     // 表示用のラベル配列（WM_CREATEのものと同じ）
@@ -105,15 +163,22 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 const wchar_t* selectedLabel = labels[wmId - 101];  // 1. どのボタンの文字を取得するか計算
                 HWND hEdit = GetDlgItem(hwnd, 200);                 // 2. ディスプレイ（ID: 200）の「ハンドル」を取得
 
-                if (wcscmp(selectedLabel, L"C") == 0) {         // 【Cボタン】 画面を "0" に戻す
+                if (wcscmp(selectedLabel, L"C") == 0) {         // 【Cボタン】 計算過程をすべてリセット
                     SetWindowTextW(hEdit, L"0");
+                                storedNum = 0;      // 1つ目の数字を保存
+                                currentOp = L'\0'; // 押された演算子 (+, -, *, /) を保存
+                                isNewInput = true;    // 次に入力する数字が「書き始め」かどうか
                 } 
                 else if (wcscmp(selectedLabel, L"=") == 0) {    // 【＝ボタン】 まだ何もしない（次のステップ）
                     wchar_t currentText[64];
                     GetWindowTextW(hEdit, currentText, 64);
                     int displayNum = _wtoi(currentText);
-                    int result = calc.keisan(storedNum, (char)currentOp, displayNum);
-                    swprintf(currentText, 64, L"%d", result);
+                    int result;
+                    if(calc.keisan(storedNum, (char)currentOp, displayNum, result)){
+                        swprintf(currentText, 64, L"%d", result);    
+                    }else{
+                        swprintf(currentText, 64, L"div0:Now %d", result);
+                    }
                     SetWindowTextW(hEdit, currentText);
                     isNewInput = true;
                 }
